@@ -14,22 +14,22 @@ import tl.com.ancs_service.busbean.NotificationRemovedBusBean;
 
 /**
  * Created by tl on 2018-9-27
- * 通知使用权service用于获取android通知
+ * Notification usage right service is used to get android notifications
  */
 public class NotificationService extends NotificationListenerService {
 
-  // 通知被移除时回调
+  // callback when the notification is removed
   @Override
   public void onNotificationRemoved(StatusBarNotification sbn) {
-    super.onNotificationRemoved(sbn);
+    super.onNotificationRemoved (sbn);
     Notification notification = sbn.getNotification();
     EventBus.getDefault().post(new NotificationRemovedBusBean(notification));
   }
 
-  // 增加一条通知时回调
+  // callback when adding a notification
   @Override
   public void onNotificationPosted(StatusBarNotification sbn) {
-    super.onNotificationPosted(sbn);
+    super.onNotificationPosted (sbn);
     Notification notification = sbn.getNotification();
     EventBus.getDefault().post(new NotificationPostedBusBean(notification));
   }
