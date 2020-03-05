@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.graphics.Bitmap;
+import android.graphics.drawable.BitmapDrawable;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.provider.Settings;
@@ -41,7 +42,7 @@ public class MainActivity extends AppCompatActivity {
     public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
       Log.d(TAG, "ancs onServiceConnected");
       ANCSService.ANCSBinder binder = (ANCSService.ANCSBinder) iBinder;
-      ancsService = binder.getANCSService();
+      ancsService = binder.getANCSService ();
     }
 
     @Override
@@ -53,11 +54,11 @@ public class MainActivity extends AppCompatActivity {
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
+    super.onCreate (savedInstanceState);
     EventBus.getDefault().register(this);
     setContentView(R.layout.activity_main);
     checkBluetooth();
-    checkNotify();
+    checkNotify ();
 
     Button bt=findViewById(R.id.update_btn);
     bt.setOnClickListener(new View.OnClickListener() {
@@ -69,7 +70,7 @@ public class MainActivity extends AppCompatActivity {
   }
 
 
-  //开启蓝牙连接和通知服务
+  // Enable Bluetooth connection and notification service
   private void openService() {
     Intent serviceIntent = new Intent(MainActivity.this, ANCSService.class);
     bindService(serviceIntent, ancsconn, Context.BIND_AUTO_CREATE);
@@ -78,17 +79,19 @@ public class MainActivity extends AppCompatActivity {
 
   @Subscribe(threadMode = ThreadMode.MAIN)
   public void onEvent(Object object) {
-    if (object instanceof NotificationPostedBusBean) {  //有新通知
+    if (object instanceof NotificationPostedBusBean) {// A new notification
       Notification notification = (Notification) ((NotificationPostedBusBean) object)
-          .getNotification();
+              .getNotification();
       Bundle extras = notification.extras;
       int notificationIcon = extras.getInt(Notification.EXTRA_SMALL_ICON);
-      Bitmap notificationLargeIcon = ((Bitmap) extras.getParcelable(Notification.EXTRA_LARGE_ICON));
+      //Bitmap notificationLargeIcon = (Bitmap) extras.get(Notification.EXTRA_LARGE_ICON);
       CharSequence notificationText = extras.getCharSequence(Notification.EXTRA_TEXT);
       CharSequence notificationSubText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT);
       Toast.makeText(this, notificationText + "\n" + notificationSubText, Toast.LENGTH_SHORT)
-          .show();
-    } else if (object instanceof NotificationRemovedBusBean) { //移除了通知
+              .show();
+      ancsService.upDate();
+      Log.d(TAG, "new notification");
+    } else if (object instanceof NotificationRemovedBusBean) {// Removed notification
 
     }
   }
@@ -99,17 +102,17 @@ public class MainActivity extends AppCompatActivity {
     if (requestCode == NO_BLUETOOTH_REQUST) {
       checkBluetooth();
     } else if (requestCode == NO_NOTIFY_REQUST) {
-      checkNotify();
+      checkNotify ();
     }
   }
 
 
   /**
-   * 检查该设备是否打开蓝牙
+   * Check if the device has Bluetooth turned on
    */
   private void checkBluetooth() {
     BluetoothManager bluetoothManager = (BluetoothManager) getSystemService(Context
-        .BLUETOOTH_SERVICE);
+            .BLUETOOTH_SERVICE);
     if (bluetoothManager != null) {
       BluetoothAdapter blueToothAdapter = bluetoothManager.getAdapter();
       if (blueToothAdapter != null && blueToothAdapter.isEnabled()) {
@@ -117,15 +120,15 @@ public class MainActivity extends AppCompatActivity {
       } else {
         Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
         startActivityForResult(enableBtIntent, NO_BLUETOOTH_REQUST);
-        Toast.makeText(this, "请允许打开蓝牙，否则无法正常使用该app", Toast.LENGTH_SHORT).show();
+        Toast.makeText (this, "Please allow Bluetooth, otherwise the app will not work properly", Toast.LENGTH_SHORT) .show ();
       }
     } else {
-      Toast.makeText(this, "该设备没有蓝牙无法正常使用该app", Toast.LENGTH_SHORT).show();
+      Toast.makeText (this, "This device cannot use the app without Bluetooth", Toast.LENGTH_SHORT) .show ();
     }
   }
 
-  //检查是否有通知权限
-  private void checkNotify() {
+  // Check if you have notification permission
+  private void checkNotify () {
     boolean enable = false;
     String packageName = getPackageName();
     String flat = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
@@ -138,7 +141,7 @@ public class MainActivity extends AppCompatActivity {
   }
 
 
-  //跳转到通知权限界面
+  // Jump to notification permission interface
   private boolean gotoNotificationAccessSetting() {
     try {
       Intent intent = new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS");
@@ -150,7 +153,7 @@ public class MainActivity extends AppCompatActivity {
         Intent intent = new Intent();
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         ComponentName cn = new ComponentName("com.android.settings", "com.android.settings" +
-            ".Settings$NotificationAccessSettingsActivity");
+                ".Settings$NotificationAccessSettingsActivity");
         intent.setComponent(cn);
         intent.putExtra(":settings:show_fragment", "NotificationAccessSettings");
         startActivityForResult(intent, NO_NOTIFY_REQUST);
@@ -165,7 +168,7 @@ public class MainActivity extends AppCompatActivity {
 
   @Override
   protected void onDestroy() {
-    super.onDestroy();
+    super.onDestroy ();
     EventBus.getDefault().unregister(this);
     if (ancsService != null) {
       ancsService.unbindService(ancsconn);
