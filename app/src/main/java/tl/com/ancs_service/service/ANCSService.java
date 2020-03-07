@@ -25,6 +25,9 @@ import android.support.annotation.Nullable;
 import android.support.annotation.RequiresApi;
 import android.util.Log;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.UUID;
 
 import tl.com.ancs_service.util.ConstanceValue;
@@ -143,14 +146,6 @@ public class ANCSService extends Service {
     BluetoothGattService service = new BluetoothGattService(UUID.fromString
             (ConstanceValue.SERVICE_ANCS),
             BluetoothGattService.SERVICE_TYPE_PRIMARY);
-    // Add a readable characteristicistic of the specified UUID
-//    BluetoothGattCharacteristic characteristicRead = new BluetoothGattCharacteristic(
-//        UUID.fromString(ConstanceValue.CHARACTERISTICS_NOTIFICATION_SOURCE),
-//        BluetoothGattCharacteristic.PROPERTY_READ,
-//        BluetoothGattCharacteristic.PERMISSION_READ);
-
-// service.addCharacteristic(characteristicRead);
-
 
     // Add a writable characteristicistic of the specified UUID
     notificationCharacteristic = new BluetoothGattCharacteristic(UUID
@@ -164,12 +159,25 @@ public class ANCSService extends Service {
     BluetoothGattDescriptor descriptor = new BluetoothGattDescriptor(UUID.fromString
             (ConstanceValue.DESCRIPTOR_CONFIG),
             BluetoothGattCharacteristic.PERMISSION_WRITE);
+    descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
     notificationCharacteristic.addDescriptor(descriptor);
     notificationCharacteristic.setValue("notify");
     service.addCharacteristic(notificationCharacteristic);
 
-    gattServer.addService(service);
+      // Add a writable characteristicistic of the specified UUID
+      datasourceCharacteristic = new BluetoothGattCharacteristic(UUID
+              .fromString(ConstanceValue.CHARACTERISTICS_DATA_SOURCE),
+              BluetoothGattCharacteristic.PROPERTY_WRITE |
+                      BluetoothGattCharacteristic.PROPERTY_READ |
+                      BluetoothGattCharacteristic.PROPERTY_NOTIFY,
+              BluetoothGattCharacteristic.PERMISSION_WRITE |
+                      BluetoothGattCharacteristic.PERMISSION_READ);
+      // Add a readable characteristic descriptor
+      datasourceCharacteristic.addDescriptor(descriptor);
+      datasourceCharacteristic.setValue("notify");
+      service.addCharacteristic(datasourceCharacteristic);
 
+      descriptor.setValue(hexStringToByteArray("10"));
     // Add a writable characteristicistic of the specified UUID
     controlpointCharacteristic = new BluetoothGattCharacteristic(UUID
             .fromString(ConstanceValue.CHARACTERISTICS_CONTROL_POINT),
@@ -180,21 +188,12 @@ public class ANCSService extends Service {
                     BluetoothGattCharacteristic.PERMISSION_READ);
     // Add a readable characteristic descriptor
     controlpointCharacteristic.addDescriptor(descriptor);
-    controlpointCharacteristic.setValue("notify");
+    controlpointCharacteristic.setValue("write");
     service.addCharacteristic(controlpointCharacteristic);
 
-    // Add a writable characteristicistic of the specified UUID
-    datasourceCharacteristic = new BluetoothGattCharacteristic(UUID
-            .fromString(ConstanceValue.CHARACTERISTICS_DATA_SOURCE),
-            BluetoothGattCharacteristic.PROPERTY_WRITE |
-                    BluetoothGattCharacteristic.PROPERTY_READ |
-                    BluetoothGattCharacteristic.PROPERTY_NOTIFY,
-            BluetoothGattCharacteristic.PERMISSION_WRITE |
-                    BluetoothGattCharacteristic.PERMISSION_READ);
-    // Add a readable characteristic descriptor
-    datasourceCharacteristic.addDescriptor(descriptor);
-    datasourceCharacteristic.setValue("notify");
-    service.addCharacteristic(datasourceCharacteristic);
+      Log.e(TAG, String.format("Initial Control point value is = %s",  Arrays.toString(controlpointCharacteristic.getValue())));
+
+    gattServer.addService(service);
 
     Log.e(TAG, "2. initServices ok");
   }
@@ -275,13 +274,17 @@ public class ANCSService extends Service {
                                            byte[] value) {
         Log.e(TAG, String.format("2.onDescriptorWriteRequest：device name = %s, address = %s",
                 device.getName(), device.getAddress()));
+
         Log.e(TAG, String.format("2.onDescriptorWriteRequest：requestId = %s, preparedWrite = " +
                         "%s, " +
-                        "responseNeeded = %s, offset = %s, value = %s,", requestId, preparedWrite,
-                responseNeeded, offset, value.toString()));
+                        "responseNeeded = %s, descriptor = %s, offset = %s, value = %s,", requestId, preparedWrite,
+                responseNeeded, descriptor, offset, Arrays.toString(value)));
+        Log.d(TAG, "current value: " +Arrays.toString(descriptor.getValue()));
+        Log.d(TAG, "uuid of request: " + descriptor.getCharacteristic().getUuid());
 
         // Respond to client requests
-        gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value);
+        gattServer.sendResponse(device, requestId, 0, offset, null);
+
       }
 
       // The remote client has requested to read the local descriptor.
@@ -303,6 +306,9 @@ public class ANCSService extends Service {
         Log.e(TAG, String.format("5.onNotificationSent：device name = %s, address = %s", device
                 .getName(), device.getAddress()));
         Log.e(TAG, String.format("5.onNotificationSent：status = %s", status));
+        Log.e(TAG, String.format("Control point value is = %s",  Arrays.toString(controlpointCharacteristic.getValue())));
+        Log.e(TAG, String.format("Control point descriptor value is = %s",  Arrays.toString(controlpointCharacteristic.getDescriptor(UUID.fromString(ConstanceValue.DESCRIPTOR_CONFIG)).getValue())));
+          ;
       }
 
       // Indicates that the callback for the MTU of the given device connection has changed.
@@ -357,22 +363,24 @@ public class ANCSService extends Service {
 
   // Notify the client that the feature value has been updated test
   public void upDate() {
-    notificationCharacteristic.setValue(hexStringToByteArray("0010060201020304"));
-    controlpointCharacteristic.setValue(hexStringToByteArray("020102030400"));
-    datasourceCharacteristic.setValue(hexStringToByteArray("00010203040103006E52460302003532"));
+    notificationCharacteristic.setValue(hexStringToByteArray("0010060101020304"));
     if (isConnected && bluetoothManager.getConnectedDevices(BluetoothProfile.GATT_SERVER).size()
             > 0) {
       Log.d(TAG, "ran notification update");
       gattServer.notifyCharacteristicChanged(bluetoothManager.getConnectedDevices
               (BluetoothProfile.GATT).get(0), notificationCharacteristic, false);
+    } else {
+      Log.d(TAG, "was not connected for update");
+    }
+    //sendData();
+  }
+
+  public void sendData() {
+      datasourceCharacteristic.setValue(hexStringToByteArray("00010203040103006E52460302003532"));
       gattServer.notifyCharacteristicChanged(bluetoothManager.getConnectedDevices
               (BluetoothProfile.GATT).get(0), datasourceCharacteristic, false);
       datasourceCharacteristic.setValue(hexStringToByteArray("000300636F6D"));
       gattServer.notifyCharacteristicChanged(bluetoothManager.getConnectedDevices
               (BluetoothProfile.GATT).get(0), datasourceCharacteristic, false);
-    } else {
-      Log.d(TAG, "was not connected for update");
-    }
   }
-
 }
