@@ -372,7 +372,7 @@ public class ANCSService extends Service {
     } else {
       Log.d(TAG, "was not connected for update");
     }
-    //sendData();
+    sendData();
   }
 
   public void sendData() {
