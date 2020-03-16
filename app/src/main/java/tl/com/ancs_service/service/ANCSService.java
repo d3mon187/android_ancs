@@ -1,5 +1,6 @@
 package tl.com.ancs_service.service;
 
+import android.app.Notification;
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -19,16 +20,22 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Binder;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.os.ParcelUuid;
 import android.support.annotation.Nullable;
 import android.support.annotation.RequiresApi;
 import android.util.Log;
 
+import java.lang.reflect.Array;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.UUID;
+import java.time.LocalDateTime; // Import the LocalDateTime class
+import java.time.format.DateTimeFormatter; // Import the DateTimeFormatter class
+
 
 import tl.com.ancs_service.util.ConstanceValue;
 
@@ -50,6 +57,12 @@ public class ANCSService extends Service {
   private ANCSBinder ancsBinder = new ANCSBinder();
   private BluetoothGattServerCallback bluetoothGattServerCallback;
   private boolean isConnected = false;
+  private boolean doSendData = false;
+  private boolean doSendApp = false;
+  private String notifCategory = "00";
+  private int notifNumber = 1;
+  private CharSequence notificationTitle = "";
+  private CharSequence notificationText = "";
 
 
   public class ANCSBinder extends Binder {
@@ -136,16 +149,31 @@ public class ANCSService extends Service {
    *
    * @param context
    */
-  @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+
   private void initServices(Context context) {
     setBluetoothGattServerCallback();
     // Create GattServer server
+
     gattServer = bluetoothManager.openGattServer(context, bluetoothGattServerCallback);
 
     // This specified service creates the specified UUID
     BluetoothGattService service = new BluetoothGattService(UUID.fromString
             (ConstanceValue.SERVICE_ANCS),
             BluetoothGattService.SERVICE_TYPE_PRIMARY);
+
+    // Add a readable characteristic descriptor
+    BluetoothGattDescriptor descriptor = new BluetoothGattDescriptor(UUID.fromString
+            (ConstanceValue.DESCRIPTOR_CONFIG),
+            BluetoothGattDescriptor.PERMISSION_READ | BluetoothGattDescriptor.PERMISSION_WRITE);
+    descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+    BluetoothGattDescriptor descriptor1 = new BluetoothGattDescriptor(UUID.fromString
+            (ConstanceValue.DESCRIPTOR_CONFIG1),
+            BluetoothGattDescriptor.PERMISSION_READ | BluetoothGattDescriptor.PERMISSION_WRITE);
+    descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+    BluetoothGattDescriptor descriptor2 = new BluetoothGattDescriptor(UUID.fromString
+            (ConstanceValue.DESCRIPTOR_CONFIG2),
+            BluetoothGattDescriptor.PERMISSION_READ | BluetoothGattDescriptor.PERMISSION_WRITE);
+    descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
 
     // Add a writable characteristicistic of the specified UUID
     notificationCharacteristic = new BluetoothGattCharacteristic(UUID
@@ -155,14 +183,8 @@ public class ANCSService extends Service {
                     BluetoothGattCharacteristic.PROPERTY_NOTIFY,
             BluetoothGattCharacteristic.PERMISSION_WRITE |
                     BluetoothGattCharacteristic.PERMISSION_READ);
-    // Add a readable characteristic descriptor
-    BluetoothGattDescriptor descriptor = new BluetoothGattDescriptor(UUID.fromString
-            (ConstanceValue.DESCRIPTOR_CONFIG),
-            BluetoothGattCharacteristic.PERMISSION_WRITE);
-    descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
     notificationCharacteristic.addDescriptor(descriptor);
     notificationCharacteristic.setValue("notify");
-    service.addCharacteristic(notificationCharacteristic);
 
       // Add a writable characteristicistic of the specified UUID
       datasourceCharacteristic = new BluetoothGattCharacteristic(UUID
@@ -172,12 +194,9 @@ public class ANCSService extends Service {
                       BluetoothGattCharacteristic.PROPERTY_NOTIFY,
               BluetoothGattCharacteristic.PERMISSION_WRITE |
                       BluetoothGattCharacteristic.PERMISSION_READ);
-      // Add a readable characteristic descriptor
-      datasourceCharacteristic.addDescriptor(descriptor);
-      datasourceCharacteristic.setValue("notify");
-      service.addCharacteristic(datasourceCharacteristic);
 
-      descriptor.setValue(hexStringToByteArray("10"));
+      datasourceCharacteristic.setValue("notify");
+
     // Add a writable characteristicistic of the specified UUID
     controlpointCharacteristic = new BluetoothGattCharacteristic(UUID
             .fromString(ConstanceValue.CHARACTERISTICS_CONTROL_POINT),
@@ -186,14 +205,15 @@ public class ANCSService extends Service {
                     BluetoothGattCharacteristic.PROPERTY_NOTIFY,
             BluetoothGattCharacteristic.PERMISSION_WRITE |
                     BluetoothGattCharacteristic.PERMISSION_READ);
-    // Add a readable characteristic descriptor
-    controlpointCharacteristic.addDescriptor(descriptor);
-    controlpointCharacteristic.setValue("write");
+
+    controlpointCharacteristic.setValue("notify");
+
+    service.addCharacteristic(notificationCharacteristic);
+    service.addCharacteristic(datasourceCharacteristic);
     service.addCharacteristic(controlpointCharacteristic);
 
-      Log.e(TAG, String.format("Initial Control point value is = %s",  Arrays.toString(controlpointCharacteristic.getValue())));
-
     gattServer.addService(service);
+
 
     Log.e(TAG, "2. initServices ok");
   }
@@ -204,6 +224,7 @@ public class ANCSService extends Service {
    */
   private void setBluetoothGattServerCallback() {
     bluetoothGattServerCallback = new BluetoothGattServerCallback() {
+
       // Call back, indicating when the remote device is connected or disconnected.
       @Override
       public void onConnectionStateChange(BluetoothDevice device, int status, int newState) {
@@ -226,6 +247,15 @@ public class ANCSService extends Service {
       public void onServiceAdded(int status, BluetoothGattService service) {
         super.onServiceAdded(status, service);
         Log.i(TAG, String.format("onServiceAdded：status = %s", status));
+        BluetoothGattDescriptor descriptor = new BluetoothGattDescriptor(UUID.fromString
+                (ConstanceValue.DESCRIPTOR_CONFIG),
+                BluetoothGattDescriptor.PERMISSION_READ | BluetoothGattDescriptor.PERMISSION_WRITE);
+        service.getCharacteristic(UUID
+                .fromString(ConstanceValue.CHARACTERISTICS_CONTROL_POINT)).addDescriptor(descriptor);
+        BluetoothGattDescriptor descriptor2 = new BluetoothGattDescriptor(UUID.fromString
+                (ConstanceValue.DESCRIPTOR_CONFIG),
+                BluetoothGattDescriptor.PERMISSION_READ | BluetoothGattDescriptor.PERMISSION_WRITE);
+        service.getCharacteristic(UUID.fromString(ConstanceValue.CHARACTERISTICS_DATA_SOURCE)).addDescriptor(descriptor2);
       }
 
       // The remote client has requested to read the local characteristics.
@@ -255,8 +285,8 @@ public class ANCSService extends Service {
                         "preparedWrite=%s, " +
                         "responseNeeded=%s, offset=%s, value=%s", requestId, preparedWrite,
                 responseNeeded,
-                offset, requestBytes.toString()));
-
+                offset, Arrays.toString(requestBytes)));
+        Log.d(TAG, "3.uuid of request: " + characteristic.getUuid());
         // Respond to the client's request
         gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset,
                 requestBytes);
@@ -278,7 +308,7 @@ public class ANCSService extends Service {
         Log.e(TAG, String.format("2.onDescriptorWriteRequest：requestId = %s, preparedWrite = " +
                         "%s, " +
                         "responseNeeded = %s, descriptor = %s, offset = %s, value = %s,", requestId, preparedWrite,
-                responseNeeded, descriptor, offset, Arrays.toString(value)));
+                responseNeeded, descriptor, offset, bytesToHex(value)));
         Log.d(TAG, "current value: " +Arrays.toString(descriptor.getValue()));
         Log.d(TAG, "uuid of request: " + descriptor.getCharacteristic().getUuid());
 
@@ -300,15 +330,22 @@ public class ANCSService extends Service {
       }
 
       // Callback when notification or indication is sent to the remote device.
+      @RequiresApi(api = Build.VERSION_CODES.O)
       @Override
       public void onNotificationSent(BluetoothDevice device, int status) {
         super.onNotificationSent(device, status);
         Log.e(TAG, String.format("5.onNotificationSent：device name = %s, address = %s", device
                 .getName(), device.getAddress()));
         Log.e(TAG, String.format("5.onNotificationSent：status = %s", status));
-        Log.e(TAG, String.format("Control point value is = %s",  Arrays.toString(controlpointCharacteristic.getValue())));
-        Log.e(TAG, String.format("Control point descriptor value is = %s",  Arrays.toString(controlpointCharacteristic.getDescriptor(UUID.fromString(ConstanceValue.DESCRIPTOR_CONFIG)).getValue())));
-          ;
+        if (doSendApp == true) {
+          sendApp(device);
+          doSendApp = false;
+        }
+        if (doSendData == true) {
+          sendData(device);
+          doSendData = false;
+        }
+
       }
 
       // Indicates that the callback for the MTU of the given device connection has changed.
@@ -323,24 +360,32 @@ public class ANCSService extends Service {
       public void onExecuteWrite(BluetoothDevice device, int requestId, boolean execute) {
         super.onExecuteWrite(device, requestId, execute);
         Log.e(TAG, String.format("onExecuteWrite：requestId = %s", requestId));
+        if (gattServer != null) {
+          gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, new byte[] {});
+        }
       }
     };
   }
 
   // Process the feature value write request
-  private void onResponseToClient(byte[] reqeustBytes, BluetoothDevice device, int requestId,
+  private void onResponseToClient(byte[] requestBytes, BluetoothDevice device, int requestId,
                                   BluetoothGattCharacteristic characteristic) {
     Log.e(TAG, String.format("4.onResponseToClient：device name = %s, address = %s", device
             .getName(), device.getAddress()));
     Log.e(TAG, String.format("4.onResponseToClient：requestId = %s", requestId));
 
-    String str = new String(reqeustBytes);
-    notificationCharacteristic.setValue(str.getBytes());
-    // Tell the client that the feature value has been updated (confirm: true means request confirmation (indication) from the client, false means send notification)
-    gattServer.notifyCharacteristicChanged(device, notificationCharacteristic, false);
-    Log.i(TAG, "4.响应：" + str);
-
+    controlpointCharacteristic.setValue(requestBytes);
+    gattServer.notifyCharacteristicChanged(device, controlpointCharacteristic, false);
+    Log.i(TAG, "4.：" +bytesToHex(requestBytes));
+    if (bytesToHex(requestBytes).substring(0,2).equals("00")) {
+      Log.i(TAG, "4. do send data");
+      doSendData = true;
+    } else if (bytesToHex(requestBytes).substring(0,2).equals("01")) {
+      Log.i(TAG, "4. do send app");
+      doSendApp = true;
+    }
   }
+
 
 
   // Notify the client that the feature value has been updated
@@ -361,9 +406,84 @@ public class ANCSService extends Service {
     return data;
   }
 
+  private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
+  public static String bytesToHex(byte[] bytes) {
+    char[] hexChars = new char[bytes.length * 2];
+    for (int j = 0; j < bytes.length; j++) {
+      int v = bytes[j] & 0xFF;
+      hexChars[j * 2] = HEX_ARRAY[v >>> 4];
+      hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
+    }
+    return new String(hexChars);
+  }
+  public static String convertStringToHex(String str) {
+
+    StringBuffer hex = new StringBuffer();
+
+    // loop chars one by one
+    for (char temp : str.toCharArray()) {
+
+      // convert char to int, for char `a` decimal 97
+      int decimal = (int) temp;
+
+      // convert int to hex, for decimal 97 hex 61
+      hex.append(Integer.toHexString(decimal));
+    }
+
+    return hex.toString();
+
+  }
+
   // Notify the client that the feature value has been updated test
-  public void upDate() {
-    notificationCharacteristic.setValue(hexStringToByteArray("0010060101020304"));
+  public void upDate(Notification notification) {
+
+    switch (notification.category) {
+      case "call":
+        notifCategory = "01";
+        break;
+      case "social":
+        notifCategory = "04";
+        break;
+      case "msg":
+        notifCategory = "04";
+        break;
+      case "event":
+        notifCategory = "05";
+        break;
+      case "alarm":
+        notifCategory = "05";
+        break;
+      case "reminder":
+        notifCategory = "05";
+        break;
+      case "email":
+        notifCategory = "06";
+        break;
+      case "navigation":
+        notifCategory = "0A";
+        break;
+      case "transport":
+        notifCategory = "0A";
+        break;
+      default:
+        notifCategory = "00";
+        break;
+    }
+
+    if (notifCategory.equals("00")) {
+      Log.d(TAG, "Notification not in main category - "+notifCategory);
+      return;
+    }
+    notifNumber++;
+
+    Bundle extras = notification.extras;
+    notificationText = extras.getCharSequence(Notification.EXTRA_TEXT);
+    CharSequence notificationSubText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT);
+    notificationTitle = extras.getCharSequence(Notification.EXTRA_TITLE);
+
+    Log.d(TAG, "notification is - category:"+notification.category+"; text: "+notificationText+"; subtext: "+notificationSubText+"; title:"+notificationTitle);
+
+    notificationCharacteristic.setValue(hexStringToByteArray("0018"+notifCategory+"01"+ String.format("%08d", notifNumber)));
     if (isConnected && bluetoothManager.getConnectedDevices(BluetoothProfile.GATT_SERVER).size()
             > 0) {
       Log.d(TAG, "ran notification update");
@@ -372,15 +492,34 @@ public class ANCSService extends Service {
     } else {
       Log.d(TAG, "was not connected for update");
     }
-    sendData();
+    //sendData();
   }
 
-  public void sendData() {
-      datasourceCharacteristic.setValue(hexStringToByteArray("00010203040103006E52460302003532"));
-      gattServer.notifyCharacteristicChanged(bluetoothManager.getConnectedDevices
-              (BluetoothProfile.GATT).get(0), datasourceCharacteristic, false);
-      datasourceCharacteristic.setValue(hexStringToByteArray("000300636F6D"));
-      gattServer.notifyCharacteristicChanged(bluetoothManager.getConnectedDevices
-              (BluetoothProfile.GATT).get(0), datasourceCharacteristic, false);
+  @RequiresApi(api = Build.VERSION_CODES.O)
+  public void sendData(BluetoothDevice device) {
+    LocalDateTime myDateObj = LocalDateTime.now();
+    System.out.println("Before formatting: " + myDateObj);
+    DateTimeFormatter myFormatObj = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
+
+    String formattedDate = myDateObj.format(myFormatObj);
+    Log.d(TAG, "DATE TEXT:"+formattedDate);
+    Log.d(TAG, "DATE:"+convertStringToHex(formattedDate));
+
+    int titleLength = notificationTitle.length();
+    int textLength = notificationText.length();
+
+    Log.d(TAG, "hex title length is:"+String.format("%02X", titleLength));
+    Log.d(TAG, "hex text length is:"+String.format("%02X", textLength));
+
+    Log.d(TAG, "send data");
+    datasourceCharacteristic.setValue(hexStringToByteArray("00"+String.format("%08d", notifNumber)+"001400636F6D2E6170706C652E6D6F62696C656D61696C050F00"+convertStringToHex(formattedDate)+"01"+String.format("%02X", titleLength)+"00"+convertStringToHex(notificationTitle.toString())+"03"+String.format("%02X", textLength)+"00"+convertStringToHex(notificationText.toString())));
+    gattServer.notifyCharacteristicChanged(device, datasourceCharacteristic, false);
+    Log.d(TAG, "data sent");
+  }
+  public void sendApp(BluetoothDevice device) {
+    Log.d(TAG, "send app");
+    datasourceCharacteristic.setValue(hexStringToByteArray("01636F6D2E6170706C652E6D6F62696C656D61696C000004004D61696C"));
+    gattServer.notifyCharacteristicChanged(device, datasourceCharacteristic, false);
+    Log.d(TAG, "app sent");
   }
 }
