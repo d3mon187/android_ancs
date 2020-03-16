@@ -64,7 +64,7 @@ public class MainActivity extends AppCompatActivity {
     bt.setOnClickListener(new View.OnClickListener() {
       @Override
       public void onClick(View v) {
-        ancsService.upDate();
+        //ancsService.upDate(notification);
       }
     });
   }
@@ -87,9 +87,9 @@ public class MainActivity extends AppCompatActivity {
       //Bitmap notificationLargeIcon = (Bitmap) extras.get(Notification.EXTRA_LARGE_ICON);
       CharSequence notificationText = extras.getCharSequence(Notification.EXTRA_TEXT);
       CharSequence notificationSubText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT);
-      Toast.makeText(this, notificationText + "\n" + notificationSubText, Toast.LENGTH_SHORT)
-              .show();
-      ancsService.upDate();
+      //Toast.makeText(this, notificationText + "\n" + notificationSubText, Toast.LENGTH_SHORT).show();
+
+      ancsService.upDate(notification);
       Log.d(TAG, "new notification");
     } else if (object instanceof NotificationRemovedBusBean) {// Removed notification
 
